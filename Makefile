@@ -151,7 +151,6 @@ UPROGS=\
 	$U/_zombie\
 
 
-
 ifeq ($(LAB),trap)
 UPROGS += \
 	$U/_call\
