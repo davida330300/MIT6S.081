@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -119,6 +121,13 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
 {
   if(mappages(kernel_pagetable, va, sz, pa, perm) != 0)
     panic("kvmmap");
+}
+
+void
+ukvmmap(pagetable_t k_pgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
+  if(mappages(k_pgtbl, va, sz, pa, perm) != 0) {
+    panic("ukvmap");
+  }
 }
 
 // translate a kernel virtual address to
@@ -466,4 +475,61 @@ void
 vmprint(pagetable_t pagetable) {
   printf("page table %p\n", pagetable);
   vmprintprocess(pagetable, 1);
+}
+
+pagetable_t 
+per_proc_kvminit() {
+  // create an empty user page table.
+  pagetable_t k_pgtbl = uvmcreate();
+  if(k_pgtbl == 0) return 0;
+
+  ukvmmap(k_pgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(k_pgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(k_pgtbl, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  ukvmmap(k_pgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  ukvmmap(k_pgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  ukvmmap(k_pgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  ukvmmap(k_pgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return k_pgtbl;
+
+}
+
+// ref: uvmunmap()
+// 
+void
+ukvmunmap(pagetable_t pagetable, uint64 va, uint64 npages)
+{
+  uint64 a;
+  pte_t *pte;
+
+  if((va % PGSIZE) != 0)
+    panic("ukvmunmap: not aligned");
+
+  for(a = va; a < va + npages*PGSIZE; a += PGSIZE) {
+    // clean page one by one
+    if((pte = walk(pagetable, a, 0)) == 0)
+      goto clean;
+    if((*pte & PTE_V) == 0)
+      goto clean;
+    if(PTE_FLAGS(*pte) == PTE_V)
+      panic("ukvmunmap: not a leaf");
+
+    clean:
+      *pte = 0;
+  }
+}
+
+void freeprockvm(struct proc* p) {
+  pagetable_t k_pgtbl = p->k_pgtbl;
+  // unmap in reverse order from alloc, size / size of page
+  ukvmunmap(k_pgtbl, p->kstack, PGSIZE/PGSIZE);
+  ukvmunmap(k_pgtbl, TRAMPOLINE, PGSIZE/PGSIZE);
+  ukvmunmap(k_pgtbl, (uint64)etext, (PHYSTOP-(uint64)etext)/PGSIZE);
+  ukvmunmap(k_pgtbl, KERNBASE, ((uint64)etext-KERNBASE)/PGSIZE);
+  ukvmunmap(k_pgtbl, PLIC, 0x400000/PGSIZE);
+  ukvmunmap(k_pgtbl, CLINT, 0x10000/PGSIZE);
+  ukvmunmap(k_pgtbl, VIRTIO0, PGSIZE/PGSIZE);
+  ukvmunmap(k_pgtbl, UART0, PGSIZE/PGSIZE);
+  // ref : uvmfree()
+  freewalk(k_pgtbl);
 }

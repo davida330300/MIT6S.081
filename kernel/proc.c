@@ -121,6 +121,22 @@ found:
     return 0;
   }
 
+  // allocate a per proc kernel pgtbl
+  p->k_pgtbl = per_proc_kvminit();
+  if(p->k_pgtbl == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0; 
+  }
+
+  // remap the kernel stack page per process
+  // physical address is already allocated in procinit()
+  uint64 va = KSTACK((int) (p - proc)); 
+  pte_t pa = kvmpa(va);
+  memset((void *)pa, 0, PGSIZE);
+  ukvmmap(p->k_pgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -150,6 +166,14 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  if (p->k_pgtbl) {
+    freeprockvm(p);
+    p->k_pgtbl = 0;
+  }
+  if (p->kstack) {
+    p->kstack = 0;
+  }
 }
 
 // Create a user page table for a given process,
@@ -473,10 +497,15 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        w_satp(MAKE_SATP(p->k_pgtbl));
+        sfence_vma();
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        kvminithart();
         c->proc = 0;
 
         found = 1;
