@@ -184,6 +184,10 @@ pagetable_t     per_proc_kvminit();
 void            ukvmmap(pagetable_t, uint64, uint64, uint64, int); 
 void            ukvmunmap(pagetable_t , uint64 , uint64 );
 void            freeprockvm(struct proc* );
+int             u2kcopy(pagetable_t, pagetable_t, uint64, uint64);
+int             copyin_new(pagetable_t, char *, uint64, uint64);
+int             copyinstr_new(pagetable_t, char *, uint64, uint64);
+void            ufreewalk(pagetable_t pagetable);
 
 // plic.c
 void            plicinit(void);

@@ -117,6 +117,12 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  if(u2kcopy(p->pagetable, p->k_pgtbl, 0, p->sz) != 0) {
+    goto bad;
+  }
+  w_satp(MAKE_SATP(p->k_pgtbl));
+  sfence_vma();
+
   // lab3 print vm
   if(p->pid == 1) {
     vmprint(p->pagetable);

@@ -166,3 +166,16 @@ void freeprockvm(struct proc* p) {
 
 7. It's OK to modify xv6 functions or add new functions; you'll probably need to do this in at least kernel/vm.c and kernel/proc.c. (But, don't modify kernel/vmcopyin.c, kernel/stats.c, user/usertests.c, and user/stats.c.)
 8. A missing page table mapping will likely cause the kernel to encounter a page fault. It will print an error that includes sepc=0x00000000XXXXXXXX. You can find out where the fault occurred by searching for XXXXXXXX in kernel/kernel.asm.
+
+
+## copyin/copyonstr
+
+Replace copyin() with a call to copyin_new first, and make it work, before moving on to copyinstr.
+
+At each point where the kernel changes a process's user mappings, change the process's kernel page table in the same way. Such points include fork(), exec(), and sbrk().
+
+Don't forget that to include the first process's user page table in its kernel page table in userinit.
+
+What permissions do the PTEs for user addresses need in a process's kernel page table? (A page with PTE_U set cannot be accessed in kernel mode.)
+
+Don't forget about the above-mentioned PLIC limit.

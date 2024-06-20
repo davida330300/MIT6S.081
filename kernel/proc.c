@@ -245,6 +245,9 @@ userinit(void)
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
+  //
+  u2kcopy(p->pagetable, p->k_pgtbl, 0, p->sz);
+
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -267,12 +270,22 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if((sz + n > PLIC) || (sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+      return -1;
+    }
+    if (u2kcopy(p->pagetable, p->k_pgtbl, p->sz, sz) != 0) {
       return -1;
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    if (sz != p->sz) {
+      uvmunmap(p->k_pgtbl, PGROUNDUP(sz), (PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE, 0);
+    }
   }
+  //ukvminithard(p->k_pgtbl);
+  w_satp(MAKE_SATP(p->k_pgtbl));
+  sfence_vma();
+
   p->sz = sz;
   return 0;
 }
@@ -298,6 +311,12 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+
+  if (u2kcopy(np->pagetable, np->k_pgtbl, 0, np->sz) != 0) {
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
 
   np->parent = p;
 
@@ -505,7 +524,8 @@ scheduler(void)
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
-        kvminithart();
+        w_satp(MAKE_SATP(p->k_pgtbl));
+        sfence_vma();
         c->proc = 0;
 
         found = 1;
