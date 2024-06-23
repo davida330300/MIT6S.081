@@ -1,0 +1,22 @@
+Answer:
+    1.  24:	4635                	li	a2,13
+        load immediate 13 to register a2
+    
+    2.  26:	45b1                	li	a1,12
+        we can see that there is not fuction invoke in call.asm/main, the compiler inlined the fuction and directly give the result
+
+    3.  The address of printf is 0000000000000628 <printf>:
+          30:	00000097          	auipc	ra,0x0
+          34:	5f8080e7          	jalr	1528(ra) # 628 <printf>
+        
+        1.  The pc of auipc instruction is 30, the immediate is 0, so ra = pc + imm = 30
+        2.  Jump using imm and ra address, remember 30 is in hex(0x30)
+            1528 = 0x5f8 , 0x5f8+0x30 = 0x628
+
+    4.  ra after 34 should be 0x34+4 = 0x38
+
+    5.  He110 World
+
+    6.  3, 0 
+        The format string store in a0, 3 store in a1, random value store in a2
+        
