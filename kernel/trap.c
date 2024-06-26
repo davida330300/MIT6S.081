@@ -86,7 +86,7 @@ usertrap(void)
         // jump to the alarm handler when returning back to user space
         p->trapframe->epc = (uint64)p->alarm_handler;
       }
-      yield();
+      yield();  // give away resource
   }
   usertrapret();
 }

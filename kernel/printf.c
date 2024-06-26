@@ -139,8 +139,8 @@ void backtrace(void)
   printf("backtrace:\n");
 
   uint64 curr_fp = r_fp();  // get 
-  uint64 page_bottom = PGROUNDDOWN(curr_fp);
-  while (page_bottom < curr_fp) {
+  uint64 page_bottom = PGROUNDDOWN(curr_fp);  // fp point to top of the current frame
+  while (page_bottom < curr_fp) { 
 
     uint64 ret = *(pte_t *)(curr_fp - 0x8); // return address, fp-8
     uint64 prev_fp = *(pte_t *)(curr_fp - 0x10);  // end of frame fp-16
