@@ -65,6 +65,29 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    printf("page fault trap: signal %d at address %p\n", r_scause(), r_stval());
+    uint64 va = PGROUNDDOWN(r_stval());
+    char *mem = kalloc(); // return 0 as unable to allocate
+
+    if(mem == 0) {
+      panic("usertrap: unable to allocate memory");
+      p->killed = 1;
+      exit(-1);
+    } else {
+
+      memset(mem, 0, PGSIZE);
+      if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+        printf("lazy alloc: failed to map page\n");
+        kfree(mem);
+        p->killed = 1;
+      }
+    }
+
+    // if (p->killed == 0) {
+
+    // }
+
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
