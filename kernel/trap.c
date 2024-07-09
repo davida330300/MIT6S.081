@@ -68,12 +68,21 @@ usertrap(void)
   } else if (r_scause() == 13 || r_scause() == 15) {
     printf("page fault trap: signal %d at address %p\n", r_scause(), r_stval());
     uint64 va = PGROUNDDOWN(r_stval());
+
+    if(va >= p->sz || va < p->trapframe->sp) {
+      p->killed = 1;
+    }
+
+    if (walkaddr(p->pagetable, va) != 0) {
+      return; // already mapped
+    }
+    
     char *mem = kalloc(); // return 0 as unable to allocate
 
     if(mem == 0) {
       panic("usertrap: unable to allocate memory");
       p->killed = 1;
-      exit(-1);
+      // exit(-1);
     } else {
 
       memset(mem, 0, PGSIZE);
@@ -83,10 +92,6 @@ usertrap(void)
         p->killed = 1;
       }
     }
-
-    // if (p->killed == 0) {
-
-    // }
 
   } else if((which_dev = devintr()) != 0){
     // ok
