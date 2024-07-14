@@ -3,6 +3,8 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "proc.h"
 #include "defs.h"
 #include "fs.h"
 
@@ -131,7 +133,7 @@ kvmpa(uint64 va)
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
-  
+
   pte = walk(kernel_pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
@@ -311,7 +313,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -320,13 +322,28 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    // ** Disable PTE_W and set COW flag for both parent and child process 
+    // ** to raise page fault when each of them executes store instruction
+    // ** Set flags only when the page is writable because it is must not a COW page
+    if (flags & PTE_W) {
+      flags = (flags & ~PTE_W) | PTE_C;
+      *pte = (*pte & ~PTE_W) | PTE_C;
+      // ** *pte = *pte | flags --> PTE_W will not be cleared!!
+    }
+
+    // **Do not need to alloc physical mem when fork()**
+    // if((mem = kalloc()) == 0)
+      // goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      // kfree((void *)pa);
       goto err;
     }
+
+    // ** add refcnt
+    krefincr((void *)pa);
   }
   return 0;
 
@@ -341,7 +358,7 @@ void
 uvmclear(pagetable_t pagetable, uint64 va)
 {
   pte_t *pte;
-  
+
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     panic("uvmclear");
@@ -355,12 +372,14 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if (cowalloc(pagetable, va0) < 0) // 原因是 copyout 在 kernel space，觸發 page fault 無法進入 usertrap，因此要額外處理, order is important
+      return -1;
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -439,4 +458,38 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int
+cowalloc(pagetable_t pagetable, uint64 va)
+{
+  // ** va must be PGSIZE aligned
+  if ((va % PGSIZE) != 0) return -1;
+
+  // ** safety check
+  if (va >= MAXVA) return -1;
+
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0) return -1;
+
+  uint64 pa = PTE2PA(*pte);
+  if (pa == 0) return -1;
+
+  // ** If page fault is raised with a COW page,
+  // ** alloc a physical page, mapped to user pagetable and set PTE_W
+  if (*pte & PTE_C)
+  {
+    uint flags = PTE_FLAGS(*pte);
+    flags = (flags & ~PTE_C) | PTE_W;
+    // ** allocate new page
+    char *ka = kalloc();
+    if (ka == 0) return -1;
+    // ** don't forget to copy old content
+    memmove(ka, (char*)pa, PGSIZE);
+    // ** free old memory mapping
+    uvmunmap(pagetable, PGROUNDUP(va), 1, 1);
+    // ** clear COW bit and set the page writable
+    mappages(pagetable, va, PGSIZE, (uint64)ka, flags);
+  }
+  return 0;
 }

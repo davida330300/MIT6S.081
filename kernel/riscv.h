@@ -15,6 +15,8 @@ r_mhartid()
 #define MSTATUS_MPP_U (0L << 11)
 #define MSTATUS_MIE (1L << 3)    // machine-mode interrupt enable.
 
+#define PTE_C (1L << 8) // copy on write
+
 static inline uint64
 r_mstatus()
 {
@@ -352,3 +354,9 @@ sfence_vma()
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
+
+
+// // shift a physical address to the ref count index
+// #define PA2IDX(pa) ((uint64)pa >> 12)
+// // shift a pte to the ref count index
+// #define PTE2IDX(pte) (pte >> 10)
