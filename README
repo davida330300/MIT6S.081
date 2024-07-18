@@ -31,3 +31,29 @@ We can improve
 1. share memory with parent at first place and set to read only
 2. when need to modify content, trigger page fault, allocate a new page, copy page fault content to new page, set to read/write
 3. what if the child process exit, but is still using parent memory space -> reference count
+
+For vm.c/uvmcopy
+1. mark COW page
+2. disable PTE_W
+3. mapping
+
+when modified child, it trigger page fault because of read-only
+For trap.c/usertrap
+1. store instruction page fault(sscause = 15)
+2. cowaaloc()
+  if this is a cow situation:
+    allocate new page for child
+    copy content from parent
+    free old memory mapping
+    clear COW bit
+
+copyout will also use cow mechanism
+
+if there is a exit in child process, make sure do not effect parent
+use refernce count
+```c
+struct {
+  struct spinlock lock;
+  int count[(PGROUNDUP(PHYSTOP) - KERNBASE)/PGSIZE];
+} refcnt;
+```
