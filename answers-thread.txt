@@ -1,0 +1,23 @@
+table level lock
+$ ./ph 1      
+100000 puts, 6.090 seconds, 16421 puts/second
+0: 0 keys missing
+100000 gets, 5.954 seconds, 16795 gets/second
+
+$ ./ph 2
+100000 puts, 8.042 seconds, 12434 puts/second
+1: 0 keys missing
+0: 0 keys missing
+200000 gets, 6.152 seconds, 32509 gets/second
+
+bucket level lock
+$ ./ph 1 
+100000 puts, 5.961 seconds, 16774 puts/second
+0: 0 keys missing
+100000 gets, 6.106 seconds, 16377 gets/second
+
+$ ./ph 2 
+100000 puts, 3.673 seconds, 27226 puts/second
+1: 0 keys missing
+0: 0 keys missing
+200000 gets, 5.607 seconds, 35667 gets/second
