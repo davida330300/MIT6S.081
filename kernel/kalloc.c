@@ -21,12 +21,17 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem[NCPU];
 
 void
 kinit()
 {
-  initlock(&kmem.lock, "kmem");
+
+  for (int i = 0; i < NCPU; i++) {
+    char name[9] = {0};
+    snprintf(name, 8, "kmem-%d", i);
+    initlock(&kmem[i].lock, name);
+  }
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -52,31 +57,55 @@ kfree(void *pa)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
 
+  push_off();
+  // ------- CS --------
+  int cpu = cpuid();
+  memset(pa, 1, PGSIZE);
   r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+  acquire(&kmem[cpu].lock);
+  r->next = kmem[cpu].freelist;
+  kmem[cpu].freelist = r;
+  release(&kmem[cpu].lock);
+  // ------- CS --------
+  pop_off();
 }
 
-// Allocate one 4096-byte page of physical memory.
-// Returns a pointer that the kernel can use.
-// Returns 0 if the memory cannot be allocated.
 void *
 kalloc(void)
 {
   struct run *r;
+  push_off();
+  int cpu = cpuid();
+  // --- critical session ---
+  acquire(&kmem[cpu].lock);
+  r = kmem[cpu].freelist;
+  if (r) {
+    kmem[cpu].freelist = r->next;
+  }
+  release(&kmem[cpu].lock);
+  // --- end of critical session ---
 
-  acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
-  release(&kmem.lock);
+  if (r == 0) { // steal free page from other CPUs
+    for (int i = 1; i < NCPU; i++) {
+      int next_cpu = (cpu + i) % NCPU;
+      acquire(&kmem[next_cpu].lock);
+      r = kmem[next_cpu].freelist;
+      if (r) {
+        // steal one page
+        kmem[next_cpu].freelist = r->next;
+      }
+      release(&kmem[next_cpu].lock);
+      if (r) {
+        break;
+      }
+    }
+  }
 
-  if(r)
+  if (r)
     memset((char*)r, 5, PGSIZE); // fill with junk
+
+  pop_off();
   return (void*)r;
 }
