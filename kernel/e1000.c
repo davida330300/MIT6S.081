@@ -141,7 +141,7 @@ e1000_recv(void)
     if ((rx_ring[rx_idx].status & E1000_RXD_STAT_DD) == 0) {
       break;
     }
-
+  
     rx_mbufs[rx_idx]->len = rx_ring[rx_idx].length;
 
     // Deliver the mbuf to the network stack using net_rx()
